@@ -1,7 +1,9 @@
-pragma solidity >=0.4.22 <0.6.0;
+//pragma solidity >=0.4.22 <0.6.0;
+pragma solidity ^0.6.0;
 
-import "openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "./openzeppelin-contracts/contracts/math/SafeMath.sol";
 import "./Utils.sol";
+import "./Helper.sol";
 
 /// @title BTCRelay implementation in Solidity
 /// @notice Stores Bitcoin block _headers and heaviest (PoW) chain tip, and allows verification of transaction inclusion proofs 
@@ -101,7 +103,7 @@ contract BTCRelay {
         require(_heaviestBlock == 0, ERR_GENESIS_SET);
         
        
-        bytes32 blockHeaderHash = dblSha(blockHeaderBytes).flipBytes().toBytes32(); 
+        bytes32 blockHeaderHash = Helper.dblSha(blockHeaderBytes).flipBytes().toBytes32(); 
         _heaviestBlock = blockHeaderHash;
         _highScore = chainWork;
         _lastDiffAdjustmentTime = lastDiffAdjustmentTime;
@@ -152,7 +154,7 @@ contract BTCRelay {
         require(blockHeaderBytes.length == 80, ERR_INVALID_HEADER_SIZE);
 
         bytes32 hashPrevBlock = blockHeaderBytes.slice(4, 32).flipBytes().toBytes32();
-        bytes32 hashCurrentBlock = dblSha(blockHeaderBytes).flipBytes().toBytes32();
+        bytes32 hashCurrentBlock = Helper.dblSha(blockHeaderBytes).flipBytes().toBytes32();
 
         // Fail if block already exists
         // Time is always set in block header struct (prevBlockHash and height can be 0 for Genesis block)
@@ -162,7 +164,7 @@ contract BTCRelay {
 
         // Fails if previous block header is not stored
         uint256 chainWorkPrevBlock = _headers[hashPrevBlock].chainWork;
-        uint256 target = getTargetFromHeader(blockHeaderBytes);
+        uint256 target = Helper.getTargetFromHeader(blockHeaderBytes);
         uint256 blockHeight = 1 + _headers[hashPrevBlock].blockHeight;
         
         // Check the PoW solution matches the target specified in the block header
@@ -175,7 +177,7 @@ contract BTCRelay {
 
         // https://en.bitcoin.it/wiki/Difficulty
         // TODO: check correct conversion here
-        uint256 difficulty = getDifficulty(target);
+        uint256 difficulty = Helper.getDifficulty(target);
         uint256 chainWork = chainWorkPrevBlock + difficulty;
 
         // Fork handling
@@ -265,7 +267,7 @@ contract BTCRelay {
         require(_headers[_heaviestBlock].blockHeight - txBlockHeight >= confirmations, ERR_CONFIRMS);
 
         bytes32 blockHeaderHash = _mainChain[txBlockHeight];
-        bytes32 merkleRoot = getMerkleRoot(_headers[blockHeaderHash].header);
+        bytes32 merkleRoot = Helper.getMerkleRoot(_headers[blockHeaderHash].header);
         // Check merkle proof structure: 1st hash == txid and last hash == merkleRoot
         require(merkleProof.slice(0, 32).toBytes32() == txid, ERR_MERKLE_PROOF);
         require(merkleProof.slice(merkleRoot.length, 32).toBytes32() == merkleRoot, ERR_MERKLE_PROOF);
@@ -279,30 +281,7 @@ contract BTCRelay {
 
 
     }
-
-    // HELPER FUNCTIONS
-    /*
-    * @notice Performs Bitcoin-like double sha256 
-    * @param data Bytes to be flipped and double hashed s
-    */
-    function dblSha(bytes memory data) public pure returns (bytes memory){
-        return abi.encodePacked(sha256(abi.encodePacked(sha256(data))));
-    }
-
-
-    /*
-    * @notice Calculates the PoW difficulty target from compressed nBits representation, 
-    * according to https://bitcoin.org/en/developer-reference#target-nbits
-    * @param nBits Compressed PoW target representation
-    * @return PoW difficulty target computed from nBits
-    */
-    function nBitsToTarget(uint256 nBits) private pure returns (uint256){
-        uint256 exp = uint256(nBits) >> 24;
-        uint256 c = uint256(nBits) & 0xffffff;
-        uint256 target = uint256((c * 2**(8*(exp - 3))));
-        return target;
-    }
-
+    
     /*
     * @notice Checks if the difficulty target should be adjusted at this block blockHeight
     * @param blockHeight block blockHeight to be checked
@@ -319,8 +298,8 @@ contract BTCRelay {
     */
     function correctDifficultyTarget(bytes32 hashPrevBlock, uint256 blockHeight, uint256 target) private view returns(bool) {
         bytes memory prevBlockHeader = _headers[hashPrevBlock].header;
-        uint256 prevTarget = getTargetFromHeader(prevBlockHeader);
-        
+        uint256 prevTarget = Helper.getTargetFromHeader(prevBlockHeader);
+
         if(!difficultyShouldBeAdjusted(blockHeight)){
             // Difficulty not adjusted at this block blockHeight
             if(target != prevTarget && prevTarget != 0){
@@ -328,7 +307,7 @@ contract BTCRelay {
             }
         } else {
             // Difficulty should be adjusted at this block blockHeight => check if adjusted correctly!
-            uint256 prevTime = getTimeFromHeader(prevBlockHeader);
+            uint256 prevTime = Helper.getTimeFromHeader(prevBlockHeader);
             uint256 startTime = _lastDiffAdjustmentTime;
             uint256 newTarget = computeNewTarget(prevTime, startTime, prevTarget);
             return target == newTarget;
@@ -337,9 +316,9 @@ contract BTCRelay {
     }
 
     /*
-    * @notice Computes the new difficulty target based on the given parameters, 
-    * according to: https://github.com/bitcoin/bitcoin/blob/78dae8caccd82cfbfd76557f1fb7d7557c7b5edb/src/pow.cpp 
-    * @param prevTime timestamp of previous block 
+    * @notice Computes the new difficulty target based on the given parameters,
+    * according to: https://github.com/bitcoin/bitcoin/blob/78dae8caccd82cfbfd76557f1fb7d7557c7b5edb/src/pow.cpp
+    * @param prevTime timestamp of previous block
     * @param startTime timestamp of last re-target
     * @param prevTarget PoW difficulty target of previous block
     */
@@ -347,7 +326,7 @@ contract BTCRelay {
         uint256 actualTimeSpan = prevTime - startTime;
         if(actualTimeSpan < TARGET_TIMESPAN_DIV_4){
             actualTimeSpan = TARGET_TIMESPAN_DIV_4;
-        } 
+        }
         if(actualTimeSpan > TARGET_TIMESPAN_MUL_4){
             actualTimeSpan = TARGET_TIMESPAN_MUL_4;
         }
@@ -357,46 +336,36 @@ contract BTCRelay {
             newTarget = UNROUNDED_MAX_TARGET;
         }
         return newTarget;
-    }   
+    }
 
     /*
     * @notice Reconstructs merkle tree root given a transaction hash, index in block and merkle tree path
     * @param txHash hash of to be verified transaction
-    * @param txIndex index of transaction given by hash in the corresponding block's merkle tree 
+    * @param txIndex index of transaction given by hash in the corresponding block's merkle tree
     * @param merkleProof merkle tree path to transaction hash from block's merkle tree root
     * @return merkle tree root of the block containing the transaction, meaningless hash otherwise
     */
     function computeMerkle(bytes32 txHash, uint256 txIndex, bytes memory merkleProof) internal view returns(bytes32) {
-    
+
         //  Special case: only coinbase tx in block. Root == proof
         if(merkleProof.length == 32) return merkleProof.toBytes32();
 
         // Merkle proof length must be greater than 64 and power of 2. Case length == 32 covered above.
         require(merkleProof.length > 64 && (merkleProof.length & (merkleProof.length - 1)) == 0, ERR_MERKLE_PROOF);
-        
+
         bytes32 resultHash = txHash;
 
         for(uint i = 1; i < merkleProof.length / 32; i++) {
             if(txIndex % 2 == 1){
-                resultHash = concatSHA256Hash(merkleProof.slice(i * 32, 32), abi.encodePacked(resultHash));
+                resultHash = Helper.concatSHA256Hash(merkleProof.slice(i * 32, 32), abi.encodePacked(resultHash));
             } else {
-                resultHash = concatSHA256Hash(abi.encodePacked(resultHash), merkleProof.slice(i * 32, 32));
+                resultHash = Helper.concatSHA256Hash(abi.encodePacked(resultHash), merkleProof.slice(i * 32, 32));
             }
             txIndex /= 2;
         }
         return resultHash;
     }
-
-    /*
-    * @notice Concatenates and re-hashes two SHA256 hashes
-    * @param left left side of the concatenation
-    * @param right right side of the concatenation
-    * @return sha256 hash of the concatenation of left and right
-    */
-    function concatSHA256Hash(bytes memory left, bytes memory right) public pure returns (bytes32) {
-        return dblSha(abi.encodePacked(left, right)).toBytes32();
-    }
-
+    
     /*
     * @notice Checks if given block hash has the requested number of confirmations
     * @dev: Will fail in txBlockHash is not in _headers
@@ -406,37 +375,7 @@ contract BTCRelay {
     function withinXConfirms(bytes32 blockHeaderHash, uint256 confirmations) public view returns(bool){
         return _headers[_heaviestBlock].blockHeight - _headers[blockHeaderHash].blockHeight >= confirmations;
     }
-
-    // Parser functions
-    function getTimeFromHeader(bytes memory blockHeaderBytes) public pure returns(uint32){
-        return uint32(blockHeaderBytes.slice(68,4).flipBytes().bytesToUint()); 
-    }
-
-    function getMerkleRoot(bytes memory blockHeaderBytes) public pure returns(bytes32){
-        return blockHeaderBytes.slice(36, 32).flipBytes().toBytes32();
-    }
-
-    function getPrevBlockHashFromHeader(bytes memory blockHeaderBytes) public pure returns(bytes32){
-        return blockHeaderBytes.slice(4, 32).flipBytes().toBytes32();
-    }
-
-    function getMerkleRootFromHeader(bytes memory blockHeaderBytes) public pure returns(bytes32){
-        return blockHeaderBytes.slice(36,32).toBytes32(); 
-    }
-
-    function getNBitsFromHeader(bytes memory blockHeaderBytes) public pure returns(uint256){
-        return blockHeaderBytes.slice(72, 4).flipBytes().bytesToUint();
-    }
-
-    function getTargetFromHeader(bytes memory blockHeaderBytes) public pure returns(uint256){
-        return nBitsToTarget(getNBitsFromHeader(blockHeaderBytes));
-    }
-
-    function getDifficulty(uint256 target) public pure returns(uint256){
-        return 0x00000000FFFF0000000000000000000000000000000000000000000000000000 / target;
-    }
-
-
+    
     // Getters
 
     function getBlockHeader(bytes32 blockHeaderHash) public view returns(
@@ -453,11 +392,16 @@ contract BTCRelay {
         nonce = uint32(blockHeaderBytes.slice(76, 4).flipBytes().bytesToUint());
         prevBlockHash = blockHeaderBytes.slice(4, 32).flipBytes().toBytes32();
         merkleRoot = blockHeaderBytes.slice(36,32).toBytes32();
-        target = nBitsToTarget(blockHeaderBytes.slice(72, 4).flipBytes().bytesToUint());
+        //uint nbits = blockHeaderBytes.slice(72, 4).flipBytes().bytesToUint();
+        //target = Helper.nBitsToTarget(nbits);
+        target = Helper.nBitsToTarget(blockHeaderBytes.slice(72, 4).flipBytes().bytesToUint());
         return(version, time, nonce, prevBlockHash, merkleRoot, target);
     }
 
     function getLatestForkHash(uint256 forkId) public view returns(bytes32){
-        return _ongoingForks[forkId].forkHeaderHashes[_ongoingForks[forkId].forkHeaderHashes.length - 1]; 
+        return _ongoingForks[forkId].forkHeaderHashes[_ongoingForks[forkId].forkHeaderHashes.length - 1];
     }
+    
+
+
 }
