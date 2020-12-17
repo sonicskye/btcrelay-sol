@@ -36,6 +36,7 @@ contract BTCRelay {
     uint256 public _lastDiffAdjustmentTime; // timestamp of the block of last difficulty adjustment (blockHeight % 2016 == 0)
     mapping(uint256 => Fork) public _ongoingForks; // mapping of currently onoing fork submissions
     uint256 public _forkCounter = 1; // incremental counter for tracking fork submission. 0 used to indicate a main chain submission
+    uint32 public _blockHeight; // the latest block height
     
     // CONSTANTS
     /*
@@ -111,6 +112,8 @@ contract BTCRelay {
         _headers[blockHeaderHash].header = blockHeaderBytes;
         _headers[blockHeaderHash].blockHeight = blockHeight;
         _headers[blockHeaderHash].chainWork = chainWork;
+        
+        _blockHeight = blockHeight;
 
         emit StoreHeader(blockHeaderHash, blockHeight);
     }
@@ -402,6 +405,9 @@ contract BTCRelay {
         return _ongoingForks[forkId].forkHeaderHashes[_ongoingForks[forkId].forkHeaderHashes.length - 1];
     }
     
+    function getHighestBlock() public view returns (uint32) {
+        return _blockHeight;
+    }
 
 
 }

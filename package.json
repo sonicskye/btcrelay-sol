@@ -7,6 +7,7 @@
     "test": "test"
   },
   "dependencies": {
+    "@truffle/hdwallet-provider": "^1.2.0",
     "big-number": "^2.0.0",
     "buffer-reverse": "^1.0.1",
     "npm": "^6.10.0",

@@ -16,6 +16,13 @@ library Helper{
     function dblSha(bytes memory data) public pure returns (bytes memory){
         return abi.encodePacked(sha256(abi.encodePacked(sha256(data))));
     }
+    
+    
+    
+    function computeBlockHeaderHash(bytes memory blockHeaderBytes) public pure returns (bytes32) {
+        return dblSha(blockHeaderBytes).flipBytes().toBytes32(); 
+    }
+    
 
 
     /*
