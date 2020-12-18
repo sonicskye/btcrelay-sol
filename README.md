@@ -67,3 +67,7 @@ Run tests:
 truffle test
 ```
 This will also re-run migration scripts. 
+
+## Changes
+- Split the contract to fit 24KB limit. No need to use allowUnlimitedContractSize. Offers more flexibility in development tools.
+- Successfully tested using own UI (under development).

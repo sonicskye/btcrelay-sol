@@ -273,7 +273,7 @@ contract BTCRelay {
         bytes32 merkleRoot = Helper.getMerkleRoot(_headers[blockHeaderHash].header);
         // Check merkle proof structure: 1st hash == txid and last hash == merkleRoot
         require(merkleProof.slice(0, 32).toBytes32() == txid, ERR_MERKLE_PROOF);
-        require(merkleProof.slice(merkleRoot.length, 32).toBytes32() == merkleRoot, ERR_MERKLE_PROOF);
+        require(merkleProof.slice(merkleProof.length-32, 32).toBytes32() == merkleRoot, ERR_MERKLE_PROOF);
         
         // compute merkle tree root and check if it matches block's original merkle tree root
         if(computeMerkle(txid, txIndex, merkleProof) == merkleRoot){
